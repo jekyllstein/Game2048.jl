@@ -1,4 +1,4 @@
-export LEFT, RIGHT, move, add_tile, LEFT_REWARD, RIGHT_REWARD, show, initbboard, display
+export LEFT, RIGHT, move, add_tile, LEFT_REWARD, RIGHT_REWARD, show, initbboard, display, move_reward
 
 import Base.show, Base.display
 
@@ -53,7 +53,7 @@ function move(bitboard::Bitboard, LOOKUP::Vector{UInt16})::Bitboard
 
     idx = board >> 48
     new_board = zero(UInt64)
-    new_board |= LOOKUP[idx+1]
+    new_board |= LOOKUP[idx+1] #can I add reward lookup to this so I get the new board but also the reward?
 
     for i in 32:-16:0
         new_board <<= 16
@@ -62,6 +62,24 @@ function move(bitboard::Bitboard, LOOKUP::Vector{UInt16})::Bitboard
     end
     Bitboard(new_board)
 end
+
+function move(bitboard::Bitboard, LOOKUP::Vector{UInt16}, LOOKUP_REWARD::Vector{Int32})::Tuple{Bitboard, Int32}
+    board = bitboard.board
+
+    idx = board >> 48
+    reward = LOOKUP_REWARD[idx + 1]
+    new_board = zero(UInt64)
+    new_board |= LOOKUP[idx+1] #can I add reward lookup to this so I get the new board but also the reward?
+
+    for i in 32:-16:0
+        new_board <<= 16
+        idx = (board >> i) & ROWMASK
+        new_board |= LOOKUP[idx+1]
+        reward += LOOKUP_REWARD[idx + 1]
+    end
+    (Bitboard(new_board), reward)
+end
+
 
 function move_updown(bitboard::Bitboard, LOOKUP::Vector{UInt16})::Bitboard
     cols = board2cols(bitboard)
@@ -80,6 +98,23 @@ function move_updown(bitboard::Bitboard, LOOKUP::Vector{UInt16})::Bitboard
     Bitboard(new_board)
 end
 
+function move_updown(bitboard::Bitboard, LOOKUP::Vector{UInt16}, LOOKUP_REWARD::Vector{Int32})::Tuple{Bitboard, Int32}
+    cols = board2cols(bitboard)
+    cols_moved = getindex.(Ref(LOOKUP), cols .+ 1)
+
+    new_board = zero(UInt64)
+
+    # construct the new board by putting the columns in to rows
+    for rowid in 1:4
+        for colid in 1:4
+            new_board <<= 4
+            new_board |= (cols_moved[colid] >> 4(4-rowid)) & CELLMASK
+        end
+    end
+
+    (Bitboard(new_board), LOOKUP_REWARD[idx+1])
+end
+
 function move(bitboard::Bitboard, dir::Dirs)::Bitboard
     if dir == left
         new_bitboard = move(bitboard, LEFT)
@@ -92,6 +127,18 @@ function move(bitboard::Bitboard, dir::Dirs)::Bitboard
     end
 
     new_bitboard
+end
+
+function move_reward(bitboard::Bitboard, dir::Dirs)::Tuple{Bitboard, Int32}
+    if dir == left
+        move(bitboard, LEFT, LEFT_REWARD)
+    elseif dir == right
+        move(bitboard, RIGHT, RIGHT_REWARD)
+    elseif dir == up
+        move_updown(bitboard, LEFT, LEFT_REWARD)
+    else
+        move_updown(bitboard, RIGHT, RIGHT_REWARD)
+    end
 end
 
 function count0(bitboard::Bitboard)
